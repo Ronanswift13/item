@@ -1,0 +1,2 @@
+timestamp_iso,distance_cm,cabinet_index,status,is_safe,reason
+2025-11-24T12:38:18.394971,9.700000000000001,,OUT_OF_RANGE,True,out of configured cabinet zones

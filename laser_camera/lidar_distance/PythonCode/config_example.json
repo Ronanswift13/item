@@ -1,0 +1,28 @@
+{
+    "serial": {
+        "port": "/dev/tty.usbserial-1130",
+        "baudrate": 115200,
+        "timeout": 1.0
+    },
+    "cabinet": {
+        "cabinets": {
+            "1": [
+                1.8,
+                2.2
+            ],
+            "2": [
+                3.3,
+                3.7
+            ],
+            "3": [
+                4.8,
+                5.2
+            ]
+        },
+        "window_size": 5
+    },
+    "vision": {
+        "gesture_max_wait_frames": 15
+    },
+    "log_path": "logs/app.log"
+}
