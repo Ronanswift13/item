@@ -2,6 +2,7 @@
     "cSpell.words": [
         "absdiff",
         "BAUDRATE",
+        "imwrite",
         "ksize",
         "pycache",
         "usbserial",

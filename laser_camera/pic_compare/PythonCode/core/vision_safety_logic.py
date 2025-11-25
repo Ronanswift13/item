@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent  # .../PythonCode 
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
+
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List, Tuple, Optional
@@ -50,6 +58,11 @@ class VisionSafetyLogic:
         frame_shape: Tuple[int, int, int],
         bboxes: List[Tuple[int, int, int, int]],
     ) -> VisionSafetyResult:
+        """
+        Decide safety level based on:
+        - Foot position vs. yellow line (via evaluate_feet_against_line)
+        - Geometry zone: OUTSIDE_SAFE / ON_LINE / INSIDE_DANGER
+        """
         geom: GeometryResult = evaluate_feet_against_line(frame_shape, bboxes)
 
         # No useful person found -> treat as SAFE / OUTSIDE_SAFE
@@ -66,12 +79,13 @@ class VisionSafetyLogic:
                 level = SafetyLevel.CAUTION
                 zone = SafetyZone.ON_LINE
             else:
+                # YellowLineZone.INSIDE_DANGER
                 level = SafetyLevel.DANGER
                 zone = SafetyZone.INSIDE_DANGER
 
             primary_bbox = geom.foot.bbox
 
-        # We no longer force a blue TARGET box; UI may choose to ignore target_box
+        # UI can decide whether to draw any extra box; we keep target_box=None for now.
         return VisionSafetyResult(
             level=level,
             zone=zone,
@@ -86,23 +100,25 @@ class VisionSafetyLogic:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    # Synthetic frame shape
     frame_shape = (1080, 1920, 3)
     h = frame_shape[0]
 
-    # Construct three synthetic cases similar to geometry self-test
+    # Yellow line at 90% height (must match your distance_compare_geometry config)
     y_line = int(h * 0.90)
 
-    safe_far = [(100, int(y_line - 0.10 * h) - 100, 80, 100)]
-    on_line = [(200, int(y_line - 0.02 * h) - 100, 80, 100)]
-    danger_inside = [(300, int(y_line + 0.05 * h) - 100, 80, 100)]
+    # Build three synthetic test cases: far above, near line, below line
+    safe_far_boxes = [(100, int(y_line - 0.10 * h) - 100, 80, 100)]
+    on_line_boxes = [(200, int(y_line - 0.02 * h) - 100, 80, 100)]
+    danger_boxes = [(300, int(y_line + 0.05 * h) - 100, 80, 100)]
 
     logic = VisionSafetyLogic(frame_width=1920, frame_height=1080)
 
     print("=== VisionSafetyLogic self-test ===")
     for name, boxes in [
-        ("safe_far", safe_far),
-        ("on_line", on_line),
-        ("danger_inside", danger_inside),
+        ("safe_far", safe_far_boxes),
+        ("on_line", on_line_boxes),
+        ("danger_inside", danger_boxes),
     ]:
         res = logic.evaluate(frame_shape, boxes)
         print(
