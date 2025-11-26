@@ -51,12 +51,23 @@ def run_tests() -> None:
             "name": "Person present but far",
             "distance": 250.0,
             "vision": build_vision(person_present=True, line=LinePosition.SAFE_ZONE),
+            "expected_warning": "CAUTION",
+            "expected_close": False,
+        },
+        {
+            "name": "Person within allowed range",
+            "distance": 100.0,
+            "vision": build_vision(
+                person_present=True,
+                line=LinePosition.SAFE_ZONE,
+                orientation=BodyOrientation.FACING_CABINET,
+            ),
             "expected_warning": "SAFE",
             "expected_close": False,
         },
         {
-            "name": "Person very close",
-            "distance": 20.0,
+            "name": "Person too close",
+            "distance": 70.0,
             "vision": build_vision(
                 person_present=True,
                 line=LinePosition.BEYOND_LINE,
@@ -64,17 +75,6 @@ def run_tests() -> None:
             ),
             "expected_warning": "DANGER",
             "expected_close": True,
-        },
-        {
-            "name": "Person borderline distance",
-            "distance": 70.0,
-            "vision": build_vision(
-                person_present=True,
-                line=LinePosition.BEYOND_LINE,
-                orientation=BodyOrientation.FACING_CABINET,
-            ),
-            "expected_warning": "CAUTION",
-            "expected_close": False,
         },
     ]
 

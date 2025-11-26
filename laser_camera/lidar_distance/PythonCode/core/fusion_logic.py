@@ -7,10 +7,12 @@ import sys
 from typing import Optional
 
 if __package__:
+    from .config import AUTHORIZED_CABINET_ID, CABINETS
     from .vision_logic import VisionState, LinePosition, BodyOrientation, GestureCode
 else:
     # Allow running as a standalone script
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from config import AUTHORIZED_CABINET_ID, CABINETS  # type: ignore
     from vision_logic import VisionState, LinePosition, BodyOrientation, GestureCode
 
 
@@ -20,6 +22,9 @@ class FusionState:
     distance_cm: Optional[float]
     vision: VisionState
     too_close: bool
+    too_close_lidar: bool
+    too_far_lidar: bool
+    inside_range: bool
     warning_level: str  # "SAFE", "CAUTION", or "DANGER"
 
 
@@ -48,25 +53,40 @@ def fuse_sensors(distance_cm: Optional[float], vision: VisionState) -> FusionSta
     - The timestamp should be `datetime.now()` when the FusionState is created.
     """
 
+    cab = CABINETS[AUTHORIZED_CABINET_ID]
+    vision_in_danger = vision.line_position == LinePosition.BEYOND_LINE
+
     if distance_cm is None:
-        too_close = False
-        warning_level = "CAUTION" if vision.person_present else "SAFE"
+        too_close_lidar = False
+        too_far_lidar = False
+        inside_range = False
+        too_close = vision_in_danger
+        warning_level = (
+            "DANGER"
+            if vision_in_danger
+            else ("CAUTION" if vision.person_present else "SAFE")
+        )
     else:
-        if distance_cm < 30:
-            too_close = True
+        too_close_lidar = distance_cm < cab.min_distance_cm
+        too_far_lidar = distance_cm > cab.max_distance_cm
+        inside_range = not too_close_lidar and not too_far_lidar
+        too_close = too_close_lidar or vision_in_danger
+
+        if too_close:
             warning_level = "DANGER"
-        elif distance_cm < 80:
-            too_close = False
-            warning_level = "CAUTION"
-        else:
-            too_close = False
+        elif inside_range:
             warning_level = "SAFE"
+        else:
+            warning_level = "CAUTION" if vision.person_present else "SAFE"
 
     return FusionState(
         timestamp=datetime.now(),
         distance_cm=distance_cm,
         vision=vision,
         too_close=too_close,
+        too_close_lidar=too_close_lidar,
+        too_far_lidar=too_far_lidar,
+        inside_range=inside_range,
         warning_level=warning_level,
     )
 

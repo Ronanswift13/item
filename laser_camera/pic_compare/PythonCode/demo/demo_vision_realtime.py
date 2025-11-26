@@ -36,7 +36,7 @@ if str(project_root) not in sys.path:
 from core.camera_driver import CameraDriver
 from core.image_comparator import ImageComparator
 from core.vision_safety_logic import VisionSafetyLogic
-from core.distance_compare_config import YELLOW_LINE_Y_RATIO
+from core import config
 
 
 @dataclass
@@ -45,19 +45,27 @@ class VisionStatus:
     zone: str
     motion_score: float
     geom_distance_px: float
+    num_boxes: int
     primary_bbox: Optional[Tuple[int, int, int, int]] = None
 
 
 def _draw_overlay(
     frame,
     status: VisionStatus,
-    y_line: int,
+    line_p1: Tuple[float, float],
+    line_p2: Tuple[float, float],
 ) -> None:
     """Draw yellow line, primary bbox, and HUD text."""
     h, w = frame.shape[:2]
 
-    # Draw yellow line
-    cv2.line(frame, (0, y_line), (w, y_line), (0, 255, 255), 2)
+    # Draw yellow line (can be slanted)
+    cv2.line(
+        frame,
+        (int(line_p1[0]), int(line_p1[1])),
+        (int(line_p2[0]), int(line_p2[1])),
+        (0, 255, 255),
+        2,
+    )
 
     # Draw primary bbox if present
     if status.primary_bbox is not None:
@@ -69,6 +77,9 @@ def _draw_overlay(
         else:
             color = (0, 200, 0)
         cv2.rectangle(frame, (x, y), (x + bw, y + bh), color, 2)
+        fx = int(x + bw / 2)
+        fy = int(y + bh)
+        cv2.circle(frame, (fx, fy), 6, (0, 0, 255), -1)
 
     # HUD bar
     bar_h = 40
@@ -80,7 +91,12 @@ def _draw_overlay(
         bar_color = (0, 200, 0)
 
     cv2.rectangle(frame, (0, 0), (w, bar_h), bar_color, thickness=-1)
-    text = f"LEVEL={status.level} ZONE={status.zone} d={status.geom_distance_px:.1f}px motion={status.motion_score:.4f}"
+    text = (
+        f"LEVEL={status.level} ZONE={status.zone} "
+        f"d={status.geom_distance_px:.2f}px "
+        f"motion={status.motion_score:.4f} "
+        f"boxes={status.num_boxes}"
+    )
     cv2.putText(
         frame,
         text,
@@ -97,27 +113,28 @@ def main() -> None:
     print("=== demo_vision_realtime.py ===")
     print("Press 'q' to quit.")
 
-    cam = CameraDriver()
+    cam = CameraDriver(config.CAMERA)
     if not cam.open():
         print("[VISION_RT] ERROR: cannot open camera.")
         return
 
+    comparator = ImageComparator(mode="frame_diff")
+
     # Read one frame to get dimensions
-    first_frame = cam.get_frame()
-    if first_frame is None:
+    ok, first_frame = cam.read()
+    if not ok or first_frame is None:
         print("[VISION_RT] ERROR: failed to read initial frame for size.")
         cam.close()
         return
     fh, fw = first_frame.shape[:2]
 
-    comparator = ImageComparator(mode="frame_diff")
     safety_logic = VisionSafetyLogic(frame_width=fw, frame_height=fh)
 
     frame_counter = 0
     try:
         while True:
-            frame = cam.get_frame()
-            if frame is None:
+            ok, frame = cam.read()
+            if not ok or frame is None:
                 print("[VISION_RT] WARNING: failed to read frame.")
                 time.sleep(0.05)
                 continue
@@ -125,24 +142,48 @@ def main() -> None:
             frame_counter += 1
 
             # Motion detection
-            comp_result = comparator.compare(frame)
-            motion_score = float(comp_result.get("motion_score", 0.0))
-            bboxes = comp_result.get("bboxes", [])
+            result = comparator.compare(frame)
 
-            # Safety evaluation
-            result = safety_logic.evaluate(frame.shape, bboxes)
-            primary_bbox = getattr(result, "primary_bbox", None)
+            # Robust parsing of comparator output (aligned with motion demo)
+            bboxes: List[Tuple[int, int, int, int]] = []
+            motion_score: float = 0.0
+            if isinstance(result, (tuple, list)):
+                if len(result) == 3:
+                    bboxes, motion_score, _ = result
+                elif len(result) == 2:
+                    bboxes, motion_score = result
+                elif len(result) == 1:
+                    bboxes = result[0]
+                else:
+                    bboxes = result[0]
+                    motion_score = result[1]
+            elif isinstance(result, dict):
+                bboxes = result.get("bboxes", []) or []
+                motion_raw = result.get("motion_score", 0.0)
+                try:
+                    motion_score = float(motion_raw)
+                except (TypeError, ValueError):
+                    motion_score = 0.0
+            elif result is None:
+                bboxes = []
+                motion_score = 0.0
+            else:
+                bboxes = result  # type: ignore[assignment]
+
+            # Safety evaluation (distance-based)
+            level, zone, d_px, primary_bbox = safety_logic.evaluate_distance(bboxes, motion_score)
 
             status = VisionStatus(
-                level=result.level.name if hasattr(result.level, "name") else str(result.level),
-                zone=result.zone.name if hasattr(result.zone, "name") else str(result.zone),
+                level=level.name if hasattr(level, "name") else str(level),
+                zone=zone.name if hasattr(zone, "name") else str(zone),
                 motion_score=motion_score,
-                geom_distance_px=getattr(result, "geom_distance_px", 0.0),
+                geom_distance_px=d_px,
+                num_boxes=len(bboxes),
                 primary_bbox=primary_bbox,
             )
 
-            y_line = int(YELLOW_LINE_Y_RATIO * frame.shape[0])
-            _draw_overlay(frame, status, y_line)
+            # HUD overlay and drawing
+            _draw_overlay(frame, status, safety_logic.line_p1, safety_logic.line_p2)
 
             # Log
             print(

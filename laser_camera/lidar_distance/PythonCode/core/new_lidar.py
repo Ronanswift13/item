@@ -4,7 +4,6 @@
 提供一个函数 get_lidar_distance_cm()，返回距离（单位：cm，float）。
 """
 
-import os
 from pathlib import Path
 import sys
 from typing import Optional
@@ -12,13 +11,14 @@ from typing import Optional
 import serial
 from time import sleep
 
-PORT_CANDIDATES = [
-    "/dev/tty.usbserial-1130",
-    "/dev/tty.usbserial-1120",
-    "/dev/ttyUSB0",
-    "COM5",
-]
-BAUD = 9600
+if __package__:
+    from .config import LIDAR
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from config import LIDAR  # type: ignore
+
+BAUD = LIDAR.baudrate
+DEFAULT_TIMEOUT = LIDAR.timeout
 
 # 单次测距指令
 SINGLE_MEASURE_CMD = bytes([0x80, 0x06, 0x02, 0x78])
@@ -64,27 +64,26 @@ def _parse_distance_from_frame(frame: bytes) -> float:
 
 
 def _resolve_port(port: Optional[str]) -> str:
-    """如果显式传入 port 则直接使用；否则在候选列表中找第一个存在的端口。"""
+    """如果显式传入 port 则直接使用；否则使用配置中的默认端口。"""
 
-    if port:
-        return port
-    for cand in PORT_CANDIDATES:
-        # Windows 端口无法用 exists 判断，所以这里只要字符串非空就尝试
-        if cand.startswith("COM"):
-            return cand
-        if Path(cand).exists():
-            return cand
-    raise NewLidarError("No usable serial port found; please specify port explicitly.")
+    return port or LIDAR.port
 
 
-def get_lidar_distance_cm(port: Optional[str] = None, baud: int = BAUD, timeout: float = 1.0) -> float:
+def get_lidar_distance_cm(port: Optional[str] = None, baud: int = BAUD, timeout: float = DEFAULT_TIMEOUT) -> float:
     """
     对外暴露的主函数：发送单次测距命令，返回距离（厘米）。
     每次调用会打开串口 -> 测一次 -> 关闭串口。
     内部会做多次尝试，以提高在偶发超时时的鲁棒性。
     """
     resolved_port = _resolve_port(port)
-    ser = serial.Serial(resolved_port, baud, timeout=timeout)
+    resolved_baud = baud if baud is not None else LIDAR.baudrate
+    resolved_timeout = timeout if timeout is not None else LIDAR.timeout
+
+    try:
+        ser = serial.Serial(resolved_port, resolved_baud, timeout=resolved_timeout)
+    except Exception as e:  # pyserial may not expose SerialException on all platforms
+        print(f"[LIDAR] failed to open {LIDAR.port}: {e}")
+        raise
     try:
         last_err: Optional[NewLidarError] = None
         for attempt in range(5):
@@ -105,7 +104,6 @@ def get_lidar_distance_cm(port: Optional[str] = None, baud: int = BAUD, timeout:
                 sleep(0.1)
                 continue
 
-        # 多次尝试都失败，抛出最后一次的错误
         if last_err is not None:
             raise last_err
         raise NewLidarError("unknown error in get_lidar_distance_cm()")

@@ -8,16 +8,15 @@ import numpy as np
 
 import sys
 from pathlib import Path
+
 CURRENT_FILE = Path(__file__).resolve()
 PROJECT_ROOT = CURRENT_FILE.parent.parent  # .../PythonCode
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-
+from core import config
 from core.distance_compare_config import (
     YELLOW_LINE_Y_RATIO,
-    ON_LINE_BAND_RATIO,
-    INSIDE_MARGIN_RATIO,
     ROI_BOTTOM_RATIO,
 )
 
@@ -27,8 +26,9 @@ class DistanceCompareConfig:
     # normalized endpoints of yellow line (0..1) relative to frame width/height
     line_p1_norm: Tuple[float, float]
     line_p2_norm: Tuple[float, float]
-    safe_px: float
-    danger_px: float
+    on_line_tolerance_px: float
+    danger_inside_threshold_px: float
+    safe_far_threshold_px: float
 
 
 def build_line_points_from_config(frame_width: int,
@@ -97,18 +97,32 @@ def classify_point_zone(
 ) -> str:
     """
     Classify the zone given the signed distance:
-      - return "OUTSIDE_SAFE" if d_px >= cfg.safe_px
-      - return "ON_LINE"      if abs(d_px) < (cfg.safe_px * 0.3)
-      - return "INSIDE_DANGER" if d_px <= cfg.danger_px
-      - otherwise you can interpolate between SAFE and ON_LINE as you wish.
+      - return "OUTSIDE_SAFE" if d_px >= cfg.safe_far_threshold_px
+      - return "ON_LINE"      if abs(d_px) <= cfg.on_line_tolerance_px
+      - return "INSIDE_DANGER" if d_px <= -cfg.danger_inside_threshold_px
+      - otherwise treat as ON_LINE (border cases)
     """
-    if d_px >= cfg.safe_px:
+    if d_px >= cfg.safe_far_threshold_px:
         return "OUTSIDE_SAFE"
-    if abs(d_px) < (cfg.safe_px * 0.3):
+    if abs(d_px) <= cfg.on_line_tolerance_px:
         return "ON_LINE"
-    if d_px <= cfg.danger_px:
+    if d_px <= -cfg.danger_inside_threshold_px:
         return "INSIDE_DANGER"
     return "ON_LINE"
+
+
+# Backward-compatible alias
+def classify_distance_zone(
+    d_px: float,
+    cfg: DistanceCompareConfig,
+) -> str:
+    return classify_point_zone(d_px, cfg)
+
+
+def foot_from_bbox(bbox: Tuple[int, int, int, int]) -> Tuple[float, float]:
+    """Estimate foot point from bbox bottom-center."""
+    x, y, w, h = bbox
+    return x + w / 2.0, y + h
 
 
 class YellowLineZone(Enum):
@@ -183,18 +197,13 @@ def evaluate_feet_against_line(
     primary = max(feet, key=lambda f: f.y)
     d = primary.y - y_line
 
-    band = ON_LINE_BAND_RATIO * h
-    inside_margin = INSIDE_MARGIN_RATIO * h
-
-    if d < -band:
+    zone_str = classify_point_zone(d, config.DISTANCE_COMPARE)
+    if zone_str == "OUTSIDE_SAFE":
         zone = YellowLineZone.OUTSIDE_SAFE
-    elif abs(d) <= band:
+    elif zone_str == "ON_LINE":
         zone = YellowLineZone.ON_LINE
-    elif d > inside_margin:
-        zone = YellowLineZone.INSIDE_DANGER
     else:
-        # small positive d but not large enough -> still treat as ON_LINE
-        zone = YellowLineZone.ON_LINE
+        zone = YellowLineZone.INSIDE_DANGER
 
     return GeometryResult(distance_px=float(d), zone=zone, foot=primary)
 

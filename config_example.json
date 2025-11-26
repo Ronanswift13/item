@@ -2,7 +2,7 @@
     "serial": {
         "port": "/dev/tty.usbserial-1120",
         "baudrate": 115200,
-        "timeout": 0.4
+        "timeout": 1.0
     },
     "cabinet": {
         "id": "G01",

@@ -107,6 +107,22 @@ class CameraDriver:
             return None, None
         return frame, frame.shape
 
+    def read(self):
+        """
+        Read a frame from the underlying cv2.VideoCapture.
+        Returns (ok, frame) like cap.read().
+        If the camera is not opened, return (False, None).
+        """
+        if self.cap is None or not self.cap.isOpened():
+            return False, None
+        return self.cap.read()
+
+    def release(self) -> None:
+        """Release camera resource (alias for close)."""
+        if self.cap is not None and self.cap.isOpened():
+            self.cap.release()
+        self.cap = None
+
 
 # ----------------------------------------------------------------------
 # Self-test: run `python core/camera_driver.py` from PythonCode directory

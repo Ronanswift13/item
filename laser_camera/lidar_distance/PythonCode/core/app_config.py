@@ -14,23 +14,40 @@ from typing import Dict, Iterable, Optional
 class SerialConfig:
     """串口参数配置。"""
 
-    port: str = "/dev/tty.usbserial-1130"
-    baudrate: int = 115200
-    timeout: float = 1.0  # 单位：秒
+    port: str = "/dev/tty.usbserial-1120"
+    baudrate: int = 9600
+    timeout: float = 0.5  # 单位：秒
+
+
+@dataclass
+class LidarConfig:
+    """激光雷达串口参数配置。"""
+
+    port: str = "/dev/cu.usbserial-1120"
+    baudrate: int = 9600
+    timeout: float = 1.0 # 单位：秒
 
 
 @dataclass
 class CabinetConfig:
-    """机位距离区间与滑动平均参数。"""
+    """单个机柜的站位距离配置。"""
 
-    cabinets: Dict[int, list[float]] = field(
-        default_factory=lambda: {
-            1: [1.8, 2.2],
-            2: [3.3, 3.7],
-            3: [4.8, 5.2],
-        }
-    )
-    window_size: int = 5
+    id: str
+    name: str
+    min_distance_cm: float
+    max_distance_cm: float
+
+
+CABINETS: Dict[str, CabinetConfig] = {
+    "G01": CabinetConfig(
+        id="G01",
+        name="走廊左侧第一个机柜",
+        min_distance_cm=80.0,
+        max_distance_cm=120.0,
+    ),
+}
+
+AUTHORIZED_CABINET_ID = "G01"
 
 
 @dataclass
@@ -45,12 +62,13 @@ class AppConfig:
     """应用总体配置，聚合串口、机位、视觉与日志参数。"""
 
     serial: SerialConfig = field(default_factory=SerialConfig)
-    cabinet: CabinetConfig = field(default_factory=CabinetConfig)
+    cabinet: CabinetConfig = field(default_factory=lambda: CABINETS[AUTHORIZED_CABINET_ID])
     vision: VisionConfig = field(default_factory=VisionConfig)
     log_path: str = "logs/app.log"
 
 
 DEFAULT_CONFIG = AppConfig()
+LIDAR = LidarConfig()
 
 
 def _deep_update_dataclass(instance, data: dict):

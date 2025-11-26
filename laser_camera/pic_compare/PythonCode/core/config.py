@@ -19,18 +19,27 @@ class DistanceCompareConfig:
     # 归一化坐标 (x, y)，范围 0..1，相对于图像宽高
     line_p1_norm: tuple[float, float] = (0.43, 0.96)   # 箭头起点
     line_p2_norm: tuple[float, float] = (0.52, 0.60)   # 箭头指向处
+    
+    
+    
+    
+    
 
-# 测试脚点，用来在静态图上画一个“脚”
+    # 测试脚点，用来在静态图上画一个“脚”
     test_foot_point_norm: tuple[float, float] = (0.50, 0.85)
+    
 
-    on_line_tolerance_px: float = 8.0      # 离线多少像素以内算“踩线”
-   
-    danger_inside_threshold_px: float = 5.0
-    safe_far_threshold_px: float = -4.5
+    on_line_tolerance_px: float = 20.0       # 离线多少像素以内算“踩线”
+    
+    danger_inside_threshold_px: float = 80.0
+    
+    safe_far_threshold_px: float = 130.0
+    
+    
+    
 # 全局配置实例
     
 DISTANCE_COMPARE = DistanceCompareConfig()
-
 # Low‑level camera settings (single source of truth)
 
 # RTSP 地址：根据实际设备修改用户名、密码和路径
@@ -76,4 +85,3 @@ __all__ = [
     "CAMERA",
     "VISION",
 ]
-
