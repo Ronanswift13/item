@@ -8,7 +8,6 @@ if str(Project_root) not in sys.path:
     sys.path.insert(0, str(Project_root))
 
 from dataclasses import dataclass
-
 @dataclass
 class DistanceCompareConfig:
     # 使用的标定图片
@@ -20,10 +19,6 @@ class DistanceCompareConfig:
     line_p1_norm: tuple[float, float] = (0.43, 0.96)   # 箭头起点
     line_p2_norm: tuple[float, float] = (0.52, 0.60)   # 箭头指向处
     
-    
-    
-    
-    
 
     # 测试脚点，用来在静态图上画一个“脚”
     test_foot_point_norm: tuple[float, float] = (0.50, 0.85)
@@ -34,8 +29,6 @@ class DistanceCompareConfig:
     danger_inside_threshold_px: float = 80.0
     
     safe_far_threshold_px: float = 130.0
-    
-    
     
 # 全局配置实例
     
@@ -71,10 +64,18 @@ class VisionThresholds:
     # 目标 bbox 高度占整幅图像高度的最小比例，低于此值认为太远
     min_height_ratio: float = 0.10
 
+
+@dataclass
+class LidarFusionConfig:
+    danger_cm: float = 120.0      # 小于此距离认为危险（靠得太近）
+    caution_cm: float = 180.0     # 在这个距离以内开始黄灯预警
+    max_valid_cm: float = 600.0   # 超出这个距离认为雷达数据不可信
+
 # 导出全局配置实例，其他模块只需要 `from core.config import CAMERA, VISION`
 
 CAMERA = CameraConfig()
 VISION = VisionThresholds()
+LIDAR_FUSION = LidarFusionConfig()
 
 __all__ = [
     "RTSP_URL",
@@ -82,6 +83,8 @@ __all__ = [
     "USB_DEVICE_INDEX",
     "CameraConfig",
     "VisionThresholds",
+    "LidarFusionConfig",
     "CAMERA",
     "VISION",
+    "LIDAR_FUSION",
 ]

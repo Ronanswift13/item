@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 import sys
 from pathlib import Path
+import time
 from typing import List, Tuple
 
 import cv2
@@ -33,6 +34,9 @@ from core import config  # noqa: E402
 from core.camera_driver import CameraDriver  # noqa: E402
 from core.image_comparator import ImageComparator  # noqa: E402
 from core.distance_compare_geometry import build_line_points_from_config  # noqa: E402
+from core.lidar_bridge import read_lidar_once, LidarSnapshot  # noqa: E402
+from core.vision_lidar_fusion import fuse_vision_and_lidar, FusionLevel  # noqa: E402
+from core.vision_safety_logic import SafetyLevel, SafetyZone, VisionSafetyResult  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +153,10 @@ def main() -> None:
 
     cv2.namedWindow("distance_compare_motion_demo", cv2.WINDOW_NORMAL)
 
+    last_lidar_ts: float = 0.0
+    last_lidar: LidarSnapshot | None = None
+    LIDAR_INTERVAL_SEC: float = 0.2  # 每 0.2 秒采一次雷达
+
     frame_id = 0
     try:
         while True:
@@ -201,7 +209,16 @@ def main() -> None:
             zone_text = "NO_TARGET"
             dist_text = ""
             hud_color = (200, 200, 200)
+            bbox_color = (200, 200, 200)
             vis = frame.copy()
+            d_value: float | None = None
+            vision_result = VisionSafetyResult(
+                level=SafetyLevel.SAFE,
+                zone=SafetyZone.OUTSIDE_SAFE,
+                target_box=None,
+                geom_distance_px=0.0,
+                primary_bbox=None,
+            )
 
             # 画黄线
             cv2.line(
@@ -233,19 +250,17 @@ def main() -> None:
                 zone = classify_distance_zone(d, dist_cfg)
                 zone_text = zone
                 dist_text = f"d = {d:.2f}px"
+                d_value = d
 
-                # 根据区域给 HUD 选颜色
                 if zone_text == "OUTSIDE_SAFE":
-                    hud_color = (0, 255, 0)         # green
+                    bbox_color = (0, 255, 0)
                 elif zone_text in ("ON_LINE", "NEAR_LINE"):
-                    hud_color = (0, 255, 255)       # yellow
+                    bbox_color = (0, 255, 255)
                 elif zone_text == "INSIDE_DANGER":
-                    hud_color = (0, 0, 255)         # red
-                else:
-                    hud_color = (200, 200, 200)     # 灰色：NO_TARGET 等
+                    bbox_color = (0, 0, 255)
 
                 # 画出主 bbox（用 hud_color）
-                cv2.rectangle(vis, (x, y), (x + bw, y + bh), hud_color, 2)
+                cv2.rectangle(vis, (x, y), (x + bw, y + bh), bbox_color, 2)
 
                 # 脚底点
                 cv2.circle(vis, (int(fx), int(fy)), 8, (0, 0, 255), -1)
@@ -259,21 +274,74 @@ def main() -> None:
                     2,
                 )
 
+                vision_level = (
+                    SafetyLevel.SAFE
+                    if zone_text in ("OUTSIDE_SAFE", "NEAR_LINE")
+                    else SafetyLevel.CAUTION
+                    if zone_text == "ON_LINE"
+                    else SafetyLevel.DANGER
+                )
+                vision_zone = (
+                    SafetyZone.OUTSIDE_SAFE
+                    if zone_text in ("OUTSIDE_SAFE", "NEAR_LINE")
+                    else SafetyZone.ON_LINE
+                    if zone_text == "ON_LINE"
+                    else SafetyZone.INSIDE_DANGER
+                )
+                vision_result = VisionSafetyResult(
+                    level=vision_level,
+                    zone=vision_zone,
+                    target_box=None,
+                    geom_distance_px=d,
+                    primary_bbox=main_bbox,
+                )
+
+            now = time.time()
+            if now - last_lidar_ts > LIDAR_INTERVAL_SEC:
+                last_lidar = read_lidar_once()
+                last_lidar_ts = now
+
+            lidar_value = (
+                last_lidar.distance_cm
+                if (last_lidar and last_lidar.ok and last_lidar.distance_cm is not None)
+                else None
+            )
+            fusion = fuse_vision_and_lidar(vision_result, lidar_value)
+
+            if fusion.level == FusionLevel.DANGER:
+                hud_color = (0, 0, 255)
+            elif fusion.level == FusionLevel.CAUTION:
+                hud_color = (0, 255, 255)
+            elif fusion.level == FusionLevel.SAFE:
+                hud_color = (0, 255, 0)
+            else:
+                hud_color = (200, 200, 200)
+
+            if lidar_value is not None:
+                lidar_log = f"lidar_cm={lidar_value:.1f}"
+                lidar_hud = f"lidar={lidar_value:.1f}cm"
+            else:
+                lidar_log = "lidar=None"
+                lidar_hud = "lidar=None"
+
+            if bboxes and d_value is not None:
                 print(
-                    f"[FRAME {frame_id}] zone={zone:>13} | "
-                    f"d={d:7.2f}px | motion={motion_score:.4f} | boxes={len(bboxes)}"
+                    f"[FRAME {frame_id}] zone={zone_text:>13} | "
+                    f"d={d_value:7.2f}px | motion={motion_score:.4f} | boxes={len(bboxes)} | {lidar_log} | fusion={fusion.level}"
                 )
             else:
                 print(
                     f"[FRAME {frame_id}] zone=NO_TARGET   | "
-                    f"d=   n/a  | motion={motion_score:.4f} | boxes=0"
+                    f"d=   n/a  | motion={motion_score:.4f} | boxes=0 | {lidar_log} | fusion={fusion.level}"
                 )
 
             # --- 3) HUD 叠加 ---
-            hud = f"ZONE: {zone_text}"
-            if dist_text:
-                hud += f" | {dist_text}"
-            hud += f" | motion={motion_score:.4f} | boxes={len(bboxes)}"
+            hud = (
+                f"LEVEL: {fusion.level} | "
+                f"zone={fusion.vision.zone.name if fusion.vision and fusion.vision.zone else zone_text} | "
+                f"d={fusion.vision.geom_distance_px:.1f}px | "
+                f"{lidar_hud}"
+            )
 
             cv2.putText(
                 vis,

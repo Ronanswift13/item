@@ -14,7 +14,7 @@ from typing import Dict, Iterable, Optional
 class SerialConfig:
     """串口参数配置。"""
 
-    port: str = "/dev/tty.usbserial-1120"
+    port: str = "/dev/tty.usbserial-1110"
     baudrate: int = 9600
     timeout: float = 0.5  # 单位：秒
 
@@ -23,7 +23,7 @@ class SerialConfig:
 class LidarConfig:
     """激光雷达串口参数配置。"""
 
-    port: str = "/dev/cu.usbserial-1120"
+    port: str = "/dev/cu.usbserial-1110"
     baudrate: int = 9600
     timeout: float = 1.0 # 单位：秒
 

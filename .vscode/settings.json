@@ -2,9 +2,12 @@
     "cSpell.words": [
         "absdiff",
         "BAUDRATE",
+        "imencode",
         "imwrite",
         "ksize",
         "pycache",
+        "realmonitor",
+        "tobytes",
         "usbserial",
         "venv"
     ]

@@ -1,7 +1,7 @@
 import time
 import serial
 
-PORT = "/dev/tty.usbserial-1120"  # 你现在用到的端口
+PORT = "/dev/tty.usbserial-1110"  # present port
 BAUD = 9600                       # 协议说明书指定的波特率
 
 # 单次测距指令：ADDR=0x80, LEN=0x06, CMD=0x02, CS=0x78

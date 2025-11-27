@@ -49,8 +49,8 @@ class RealtimeLidarSource:
     ) -> None:
         """
         Args:
-            port: 串口名，例如 COM5、/dev/ttyUSB0、/dev/tty.usbserial-0001 等。
-            baudrate: 串口波特率，默认 115200。
+            port: 串口名，例如 COM5、/dev/tty.usbserial-1120、/dev/tty./dev/tty.usbserial-1110	 等。
+            baudrate: 串口波特率，默认 9600。
             timeout: 串口读取超时时间（秒）。
             window_size: 滑动平均窗口长度，用于平滑距离抖动。
         """

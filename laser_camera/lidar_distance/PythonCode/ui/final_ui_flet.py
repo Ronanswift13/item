@@ -227,9 +227,9 @@ def main(page: ft.Page) -> None:
         "COM4",
         "COM5",
         "/dev/ttyUSB0",
-        "/dev/ttyUSB1",
+        "/dev/tty.usbserial-1110",
         "/dev/tty.usbserial-1130",
-        "/dev/tty.usbserial-0001",
+        "/dev/tty.usbserial-1120",
     ]
     default_port = CONFIG.serial.port
     if default_port not in serial_port_options:
