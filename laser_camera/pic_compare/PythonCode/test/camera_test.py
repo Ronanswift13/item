@@ -1,23 +1,29 @@
+#cd ~/Desktop/item/laser_camera/pic_compare/PythonCode
+
+#usr/bin/python3 - << 'EOF'
 import cv2
 
-cap = cv2.VideoCapture(0)  # 如果你现在用的是 USB 摄像头
+# TODO:
+url = "rtsp://admin:admin123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0"
+
+print("Try open:", url)
+cap = cv2.VideoCapture(url)
 
 if not cap.isOpened():
-    print("Failed to open camera")
-    raise SystemExit
+    print("Open failed!")
+    exit(1)
+
+print("Open OK, start showing frames. Press 'q' to quit.")
 
 while True:
     ok, frame = cap.read()
     if not ok:
-        print("Failed to read frame")
+        print("Read frame failed.")
         break
 
-    # 可选：降低分辨率，看是否更流畅
-    # frame = cv2.resize(frame, (960, 540))
-
-    cv2.imshow("camera_test", frame)
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord("q"):
+    cv2.imshow("rtsp_test", frame)
+    # 1ms 轮询键盘，按 q 退出
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 cap.release()

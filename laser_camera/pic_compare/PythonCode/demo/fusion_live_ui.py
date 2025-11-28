@@ -16,9 +16,8 @@ from typing import List, Tuple
 
 import cv2
 
-# ---------------------------------------------------------------------------
-# sys.path 修复 —— 一定要在 from core ... 之前
-# ---------------------------------------------------------------------------
+DOWNSCALE_FACTOR = 0.5  # e.g. 1920x1080 -> 960x540
+# Adjust sys.path to include project root for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent  # PythonCode 目录
 if str(project_root) not in sys.path:
@@ -40,6 +39,9 @@ from core.vision_safety_logic import (  # noqa: E402
     SafetyLevel,
     SafetyZone,
 )
+
+_last_lidar_snapshot = None
+_last_lidar_time = 0.0
 
 
 def pick_main_bbox(bboxes: List[Tuple[int, int, int, int]]) -> Tuple[int, int, int, int] | None:
@@ -74,13 +76,43 @@ def main() -> None:
         camera.release()
         return
 
-    h, w = frame.shape[:2]
+    def parse_compare(res):
+        local_bboxes: List[Tuple[int, int, int, int]] = []
+        local_motion: float = 0.0
+        if isinstance(res, (tuple, list)):
+            if len(res) == 3:
+                local_bboxes, local_motion, _ = res
+            elif len(res) == 2:
+                local_bboxes, local_motion = res
+            elif len(res) == 1:
+                local_bboxes = res[0]
+        elif isinstance(res, dict):
+            local_bboxes = res.get("bboxes", []) or []
+            motion_raw = res.get("motion_score", 0.0)
+            try:
+                local_motion = float(motion_raw)
+            except (TypeError, ValueError):
+                local_motion = 0.0
+        elif res is None:
+            local_bboxes = []
+            local_motion = 0.0
+        else:
+            local_bboxes = res  # type: ignore[assignment]
+        return local_bboxes, local_motion
+
+    h_full, w_full = frame.shape[:2]
+    w_small = int(w_full * DOWNSCALE_FACTOR)
+    h_small = int(h_full * DOWNSCALE_FACTOR)
+    frame_small = cv2.resize(frame, (w_small, h_small))
+
+    h, w = frame_small.shape[:2]
     p1, p2 = build_line_points_from_config(w, h, dist_cfg)
-    print(f"[INFO] frame size = {w}x{h}")
+    print(f"[INFO] frame size (small) = {w}x{h}")
     print(f"[INFO] yellow line p1={p1}, p2={p2}")
 
     cv2.namedWindow("fusion_live_ui", cv2.WINDOW_NORMAL)
 
+    PRINT_INTERVAL = 10
     frame_id = 0
     try:
         while True:
@@ -90,32 +122,18 @@ def main() -> None:
                 break
 
             frame_id += 1
-            vis = frame.copy()
+            h_full, w_full = frame.shape[:2]
+            w_small = int(w_full * DOWNSCALE_FACTOR)
+            h_small = int(h_full * DOWNSCALE_FACTOR)
+            frame_small = cv2.resize(frame, (w_small, h_small))
 
-            # --- Motion / bbox detection ---
-            result = comparator.compare(frame)
-            bboxes: List[Tuple[int, int, int, int]] = []
-            motion_score: float = 0.0
+            work = frame_small
+            h, w = work.shape[:2]
+            vis = work.copy()
 
-            if isinstance(result, (tuple, list)):
-                if len(result) == 3:
-                    bboxes, motion_score, _ = result
-                elif len(result) == 2:
-                    bboxes, motion_score = result
-                elif len(result) == 1:
-                    bboxes = result[0]
-            elif isinstance(result, dict):
-                bboxes = result.get("bboxes", []) or []
-                motion_raw = result.get("motion_score", 0.0)
-                try:
-                    motion_score = float(motion_raw)
-                except (TypeError, ValueError):
-                    motion_score = 0.0
-            elif result is None:
-                bboxes = []
-                motion_score = 0.0
-            else:
-                bboxes = result  # type: ignore[assignment]
+            result = comparator.compare(work)
+            bboxes, motion_score = parse_compare(result)
+            has_person = len(bboxes) > 0
 
             # --- Geometry: yellow line & foot distance ---
             cv2.line(
@@ -173,9 +191,19 @@ def main() -> None:
                 cv2.rectangle(vis, (x, y), (x + bw, y + bh), (0, 255, 0), 2)
                 cv2.circle(vis, (int(fx), int(fy)), 6, (0, 0, 255), -1)
 
-            # --- LiDAR sampling ---
-            lidar_snapshot = read_lidar_once()
-            lidar_cm = lidar_snapshot.distance_cm if (lidar_snapshot.ok and lidar_snapshot.distance_cm is not None) else None
+            # --- LiDAR sampling with simple cache ---
+            now = time.time()
+            global _last_lidar_snapshot, _last_lidar_time
+            if now - _last_lidar_time >= 0.2 or _last_lidar_snapshot is None:
+                _last_lidar_snapshot = read_lidar_once()
+                _last_lidar_time = now
+
+            lidar_snapshot = _last_lidar_snapshot
+            lidar_cm = (
+                lidar_snapshot.distance_cm
+                if (lidar_snapshot and lidar_snapshot.ok and lidar_snapshot.distance_cm is not None)
+                else None
+            )
 
             fusion = fuse_vision_and_lidar(vision_result, lidar_cm)
 
@@ -212,13 +240,14 @@ def main() -> None:
                 2,
             )
 
-            print(
-                f"[FUSION_UI] frame={frame_id:05d} "
-                f"zone={zone_text:>13} "
-                f"d_px={(d_px if d_px is not None else float('nan')):7.2f} "
-                f"motion={motion_score:.4f} boxes={len(bboxes)} "
-                f"lidar={lidar_text} fusion={fusion.level} reason={fusion.reason}"
-            )
+            if frame_id % PRINT_INTERVAL == 0:
+                print(
+                    f"[FUSION_UI] frame={frame_id:05d} "
+                    f"zone={zone_text:>13} "
+                    f"d_px={(d_px if d_px is not None else float('nan')):7.2f} "
+                    f"motion={motion_score:.4f} boxes={len(bboxes)} "
+                    f"lidar={lidar_text} fusion={fusion.level} reason={fusion.reason}"
+                )
 
             cv2.imshow("fusion_live_ui", vis)
 
