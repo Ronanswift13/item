@@ -16,7 +16,7 @@ from typing import List, Tuple
 
 import cv2
 
-DOWNSCALE_FACTOR = 0.5  # e.g. 1920x1080 -> 960x540
+DOWNSCALE_FACTOR = 0.4  # e.g. 1920x1080 -> 768x432
 # Adjust sys.path to include project root for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent  # PythonCode 目录
@@ -70,8 +70,8 @@ def main() -> None:
 
     comparator = ImageComparator()
 
-    ok, frame = camera.read()
-    if not ok or frame is None:
+    frame = camera.get_frame()
+    if frame is None:
         print("[ERROR] Cannot read first frame.")
         camera.release()
         return
@@ -113,11 +113,14 @@ def main() -> None:
     cv2.namedWindow("fusion_live_ui", cv2.WINDOW_NORMAL)
 
     PRINT_INTERVAL = 10
+    VISION_INTERVAL =2 # 每 2帧跑一次运动检测
+    last_bboxes: List[Tuple[int, int, int, int]] = []
+    last_motion_score: float = 0.0
     frame_id = 0
     try:
         while True:
-            ok, frame = camera.read()
-            if not ok or frame is None:
+            frame = camera.get_frame()
+            if frame is None:
                 print("[WARN] Failed to read frame, break.")
                 break
 
@@ -131,8 +134,12 @@ def main() -> None:
             h, w = work.shape[:2]
             vis = work.copy()
 
-            result = comparator.compare(work)
-            bboxes, motion_score = parse_compare(result)
+            if frame_id % VISION_INTERVAL == 0:
+                result = comparator.compare(work)
+                last_bboxes, last_motion_score = parse_compare(result)
+
+            bboxes = last_bboxes
+            motion_score = last_motion_score
             has_person = len(bboxes) > 0
 
             # --- Geometry: yellow line & foot distance ---
@@ -237,6 +244,17 @@ def main() -> None:
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.9,
                 hud_color,
+                2,
+            )
+
+            # 在左下角标出当前帧号，便于确认画面是否在更新
+            cv2.putText(
+                vis,
+                f"frame={frame_id}",
+                (20, h - 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
                 2,
             )
 

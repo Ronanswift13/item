@@ -100,7 +100,7 @@ def main(page: ft.Page) -> None:
     log_view = ft.ListView(expand=True, spacing=2, auto_scroll=True)
 
     placeholder_src = "data:image/gif;base64,R0lGODlhAQABAAAAACw="
-    image_view = ft.Image(width=640, height=360, fit=ft.ImageFit.CONTAIN, src=placeholder_src)
+    image_view = ft.Image(width=960, height=540, fit=ft.ImageFit.CONTAIN, src=placeholder_src)
     placeholder_text = ft.Text(
         "No camera frame (frame_base64 is None)",
         size=14,
@@ -108,8 +108,8 @@ def main(page: ft.Page) -> None:
         weight=ft.FontWeight.BOLD,
     )
     image_container = ft.Container(
-        width=640,
-        height=360,
+        width=960,
+        height=540,
         bgcolor=colors.GREY_200,
         content=ft.Stack(
             [
@@ -124,15 +124,17 @@ def main(page: ft.Page) -> None:
     tracker, authorized_default = build_tracker()
     authorized_state = {"ids": set(authorized_default)}
 
-    record_state = {"enabled": False}
-    tracker, authorized_default = build_tracker()
-    authorized_state = {"ids": set(authorized_default)}
-
     # 共享视觉状态（由摄像线程更新）
     vision_state = {
         "snapshot": None,       # type: VisionSnapshot | None
         "frame_b64": None,      # type: str | None
         "has_frame": False,
+        "frame_id": 0,
+    }
+
+    lidar_state = {
+        "distance_cm": None,  # type: float | None
+        "error": None,        # type: Exception | None
     }
 
     def on_record_toggle(e: ft.ControlEvent) -> None:
@@ -145,6 +147,7 @@ def main(page: ft.Page) -> None:
         log_view.controls.append(ft.Text(message))
         if len(log_view.controls) > 50:
             del log_view.controls[0]
+        log_view.update()
 
     def on_authorized_change(index: int, e: ft.ControlEvent) -> None:
         if e.control.value:
@@ -219,21 +222,31 @@ def main(page: ft.Page) -> None:
                     import cv2
                     import base64
 
+                    frame_id = vision_state["frame_id"]
+
+                    # 原始 BGR 帧（与单独 OpenCV 显示保持一致的颜色）
                     frame = snap.frame
                     h, w = frame.shape[:2]
-                    scale = 240.0 / max(w, h)
+
+                    # 把最大边压到 720 像素左右，用于 UI 显示，兼顾清晰度与带宽
+                    max_display = 720.0
+                    scale = max_display / float(max(w, h))
                     if scale < 1.0:
-                        frame = cv2.resize(
+                        frame_small = cv2.resize(
                             frame,
                             (int(w * scale), int(h * scale)),
                             interpolation=cv2.INTER_AREA,
                         )
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    ok, buf = cv2.imencode(".jpg", frame_rgb, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+                    else:
+                        frame_small = frame
+
+                    # 不做 BGR->RGB 转换，直接编码成 JPEG，颜色与相机窗口保持一致，质量80兼顾清晰与延迟
+                    ok, buf = cv2.imencode(".jpg", frame_small, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                     if ok:
                         b64 = base64.b64encode(buf.tobytes()).decode("ascii")
                         vision_state["frame_b64"] = b64
                         vision_state["has_frame"] = True
+                        vision_state["frame_id"] = frame_id + 1
                     else:
                         vision_state["frame_b64"] = None
                         vision_state["has_frame"] = False
@@ -245,13 +258,33 @@ def main(page: ft.Page) -> None:
                 vision_state["frame_b64"] = None
                 vision_state["has_frame"] = False
 
-            time.sleep(0.08)  # 控制帧率，避免卡顿 / CPU 过高
+            time.sleep(0.01)  # 提高刷新率，减小延迟
+
+    def lidar_loop() -> None:
+        """Background thread: periodically read LiDAR distance.
+
+        This keeps the potentially blocking serial I/O off the UI update loop,
+        so the UI can stay responsive even if the sensor hiccups."""
+        while True:
+            try:
+                d = get_lidar_distance_cm()
+                lidar_state["distance_cm"] = d
+                lidar_state["error"] = None
+            except NewLidarError as exc:  # noqa: BLE001
+                lidar_state["distance_cm"] = None
+                lidar_state["error"] = exc
+            # 100ms interval is enough for cabinet standing detection
+            time.sleep(0.1)
 
     threading.Thread(target=vision_loop, daemon=True).start()
+    threading.Thread(target=lidar_loop, daemon=True).start()
     
     
     # --- Main update loop ---
     
+    # 控制日志输出频率，避免 ListView 频繁刷新导致卡顿
+    log_counter = {"n": 0}
+
     def append_csv_row(decision: LidarDecision, distance_cm: float | None) -> None:
         file_exists = csv_path.exists()
         with csv_path.open("a", newline="", encoding="utf-8") as fp:
@@ -279,22 +312,31 @@ def main(page: ft.Page) -> None:
             )
 
     def update_loop() -> None:
+        last_frame_id = {"id": -1}
+
         while True:
-            try:
-                distance_cm = get_lidar_distance_cm()
-            except NewLidarError as exc:
+            # Read latest LiDAR snapshot prepared by lidar_loop
+            distance_cm = lidar_state.get("distance_cm")
+            lidar_error = lidar_state.get("error")
+
+            if lidar_error is not None:
+                # Sensor error: fall back to vision-only logic and show clear message
                 decision = tracker.update(None, authorized_cabinets=authorized_state["ids"])
                 distance_text.value = "distance: --"
                 warning_text.value = "warning: SENSOR ERROR"
                 warning_text.color = colors.RED
                 cabinet_label.value = "cabinet: --"
                 status_label.value = f"status: {decision.status.name}"
-                reason_label.value = f"reason: sensor error: {exc}"
+                reason_label.value = f"reason: sensor error: {lidar_error}"
                 log_add(
                     f"[zone_ui] dist=None | cabinet=-- | status={decision.status.name} | "
-                    f"safe={decision.is_safe} | reason=sensor error: {exc}"
+                    f"safe={decision.is_safe} | reason=sensor error: {lidar_error}"
                 )
-                page.update()
+                distance_text.update()
+                cabinet_label.update()
+                status_label.update()
+                reason_label.update()
+                warning_text.update()
                 time.sleep(0.2)
                 continue
 
@@ -326,10 +368,19 @@ def main(page: ft.Page) -> None:
                     warning_text.value = "warning: DANGER"
                 warning_text.color = colors.RED
 
-            log_add(
-                f"[zone_ui] dist={distance_display} | cabinet={cab} | status={decision.status.name} | "
-                f"safe={decision.is_safe} | reason={decision.reason}"
-            )
+            distance_text.update()
+            cabinet_label.update()
+            status_label.update()
+            reason_label.update()
+            warning_text.update()
+
+            # 每 10 帧记录一次日志，减少 UI 刷新压力
+            log_counter["n"] += 1
+            if log_counter["n"] % 10 == 0:
+                log_add(
+                    f"[zone_ui] dist={distance_display} | cabinet={cab} | status={decision.status.name} | "
+                    f"safe={decision.is_safe} | reason={decision.reason}"
+                )
 
             if record_state["enabled"]:
                 append_csv_row(decision, csv_distance)
@@ -337,15 +388,19 @@ def main(page: ft.Page) -> None:
 
             frame_b64 = vision_state.get("frame_b64")
             has_frame = vision_state.get("has_frame")
-
-            if frame_b64:
+            current_frame_id = vision_state.get("frame_id", 0)
+            if has_frame and current_frame_id != last_frame_id["id"]:
                 image_view.src_base64 = frame_b64
                 placeholder_text.value = ""
-            else:
+                image_view.update()
+                placeholder_text.update()
+                last_frame_id["id"] = current_frame_id
+            elif not has_frame:
                 placeholder_text.value = "No camera frame (frame_base64 is None)"
+                placeholder_text.update()
 
-            page.update()
-            time.sleep(0.1)
+            # page.update()  # Removed to reduce full page refreshes and improve UI responsiveness
+            time.sleep(0.02)
 
     threading.Thread(target=update_loop, daemon=True).start()
 

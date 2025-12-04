@@ -54,14 +54,16 @@ class CameraDriver:
         if self.cfg.use_rtsp:
             print(f"[CameraDriver] Trying RTSP: {self.cfg.rtsp_url}")
             self.cap = cv2.VideoCapture(self.cfg.rtsp_url)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             if self.cap.isOpened():
                 self.source_desc = f"RTSP({self.cfg.rtsp_url})"
                 print(f"[CameraDriver] RTSP opened OK: {self.source_desc}")
                 return True
             else:
-                print("[CameraDriver] RTSP open failed, fallback to USB device...")
+                print(f"[CameraDriver] RTSP open failed: {self.cfg.rtsp_url}")
                 self.cap.release()
                 self.cap = None
+                return False
 
         # 2) USB 摄像头回退方案
         print(f"[CameraDriver] Trying USB device index={self.cfg.device_index}")
@@ -115,7 +117,8 @@ class CameraDriver:
         """
         if self.cap is None or not self.cap.isOpened():
             return False, None
-        return self.cap.read()
+        ok, frame = self.cap.read()
+        return ok, frame
 
     def release(self) -> None:
         """Release camera resource (alias for close)."""
@@ -123,10 +126,6 @@ class CameraDriver:
             self.cap.release()
         self.cap = None
 
-
-# ----------------------------------------------------------------------
-# Self-test: run `python core/camera_driver.py` from PythonCode directory
-# ----------------------------------------------------------------------
 if __name__ == "__main__":
     print("=== CameraDriver self-test ===")
     print(

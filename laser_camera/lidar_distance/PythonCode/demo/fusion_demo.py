@@ -9,7 +9,7 @@ from time import sleep
 try:
     from core.new_lidar import get_lidar_distance_cm as get_lidar_distance
     # 指定当前 Mac 上的实际串口
-    LIDAR_PORT = "/dev/tty.usbserial-1120"
+    LIDAR_PORT = "/dev/tty.usbserial-1110"
 except ImportError:
     # 仅作 fallback 提示，实际应确保 core.new_lidar 可用
     print("Warning: core.new_lidar not found, check paths.")

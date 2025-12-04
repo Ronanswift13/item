@@ -31,7 +31,7 @@ class FusionConfig:
 
 
 SERIAL = SerialConfig(
-    lidar_port="/dev/tty.usbserial-120",
+    lidar_port="/dev/tty.usbserial-1110",
     lidar_baudrate=9600,
 )
 
