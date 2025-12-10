@@ -1,30 +1,49 @@
-#cd ~/Desktop/item/laser_camera/pic_compare/PythonCode
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-#usr/bin/python3 - << 'EOF'
+from pathlib import Path
+import sys
 import cv2
 
-# TODO:
-url = "rtsp://admin:admin123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0"
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent  # PythonCode
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-print("Try open:", url)
-cap = cv2.VideoCapture(url)
+from core import config
 
-if not cap.isOpened():
-    print("Open failed!")
-    exit(1)
 
-print("Open OK, start showing frames. Press 'q' to quit.")
+def main() -> None:
+    cam_cfg = config.CAMERA
+    if cam_cfg.use_rtsp:
+        source = cam_cfg.rtsp_url
+        print(f"[TEST] Try open RTSP: {source}")
+    else:
+        source = cam_cfg.device_index
+        print(f"[TEST] Try open USB device index: {source}")
 
-while True:
-    ok, frame = cap.read()
-    if not ok:
-        print("Read frame failed.")
-        break
+    cap = cv2.VideoCapture(source)
 
-    cv2.imshow("rtsp_test", frame)
-    # 1ms 轮询键盘，按 q 退出
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    if not cap.isOpened():
+        print(f"[TEST] Open failed! Source: {source}")
+        raise SystemExit(1)
 
-cap.release()
-cv2.destroyAllWindows()
+    print("[TEST] Open OK, start showing frames. Press 'q' to quit.")
+
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            print("[TEST] Read frame failed.")
+            break
+
+        cv2.imshow("rtsp_test", frame)
+        # Poll keyboard every 1ms, press 'q' to quit
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
