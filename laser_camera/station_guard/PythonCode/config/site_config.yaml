@@ -1,0 +1,32 @@
+# 当前部署配置 - 根据实际测量填写
+coordinate_system:
+  origin: [0.0, 0.0]
+  unit: meters
+
+corridor:
+  width_m: 2.0  # 实测走廊宽度
+  length_m: 6.0
+
+# TODO: 根据实际机柜位置测量并填写
+cabinets:
+  - id: 1
+    center_distance_m: 2.0
+    front_zone:
+      - [1.8, -0.4]
+      - [2.2, -0.4]
+      - [2.2, 0.4]
+      - [1.8, 0.4]
+    authorized_persons: []  # 先留空，后续填入实际人员ID
+
+warning_lines:
+  - id: "yellow_line_1"
+    segment: [[4.0, -1.0], [4.0, 1.0]]
+    buffer_width_m: 0.2
+
+sensors:
+  camera:
+    image_width_px: 1920  # 从您的相机配置获取
+    corridor_width_m: 2.0
+    
+  lidar:
+    mount_height_m: 1.5

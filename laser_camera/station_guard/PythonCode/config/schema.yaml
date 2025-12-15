@@ -1,0 +1,83 @@
+# 变电站走廊多人越界检测系统配置模板
+# 所有坐标单位为米，原点为参考点（通常是相机或雷达安装位置）
+
+coordinate_system:
+  origin: [0.0, 0.0]  # 坐标系原点
+  unit: meters        # 单位
+  x_axis: longitudinal  # x轴方向：沿走廊长度方向
+  y_axis: lateral      # y轴方向：走廊横向宽度方向
+
+# 走廊基本尺寸
+corridor:
+  width_m: 2.0   # 走廊宽度（米）
+  length_m: 6.0  # 监控范围长度（米）
+
+# 机柜定义（从您的 CABINETS 字典转换而来）
+cabinets:
+  - id: 1
+    name: "一号机柜"
+    center_distance_m: 2.0  # 机柜中心距离
+    front_zone:  # 机柜前方操作区域（矩形顶点）
+      - [1.8, -0.4]
+      - [2.2, -0.4]
+      - [2.2, 0.4]
+      - [1.8, 0.4]
+    authorized_persons: ["tech_001", "tech_005"]
+    
+  - id: 2
+    name: "二号机柜"
+    center_distance_m: 3.5
+    front_zone:
+      - [3.3, -0.4]
+      - [3.7, -0.4]
+      - [3.7, 0.4]
+      - [3.3, 0.4]
+    authorized_persons: ["tech_003", "tech_007"]
+    
+  - id: 3
+    name: "三号机柜（高压危险）"
+    center_distance_m: 5.0
+    front_zone:
+      - [4.8, -0.4]
+      - [5.2, -0.4]
+      - [5.2, 0.4]
+      - [4.8, 0.4]
+    authorized_persons: []  # 无授权人员
+    is_danger_zone: true
+
+# 警戒线定义
+warning_lines:
+  - id: "yellow_line_1"
+    name: "主警戒线"
+    segment: [[4.0, -1.0], [4.0, 1.0]]  # 线段端点
+    buffer_width_m: 0.2  # 缓冲区宽度（触发ON_LINE状态）
+    color: "yellow"
+
+# 危险区域定义
+danger_zones:
+  - id: "cabinet_3_danger"
+    name: "三号机柜高压区"
+    polygon:
+      - [4.7, -0.5]
+      - [5.3, -0.5]
+      - [5.3, 0.5]
+      - [4.7, 0.5]
+    proximity_alert_m: 0.3  # 接近警报距离
+
+# 传感器校准参数
+sensors:
+  camera:
+    image_width_px: 1920
+    image_height_px: 1080
+    corridor_width_m: 2.0
+    center_offset_m: 0.0  # 相机偏离走廊中心的距离
+    
+  lidar:
+    mount_height_m: 1.5   # 安装高度
+    tilt_angle_deg: 0.0   # 俯仰角度
+    
+# 系统参数
+system:
+  max_persons: 10         # 最大跟踪人数
+  track_lost_threshold: 30  # 轨迹丢失阈值（帧数）
+  frame_rate_target: 10    # 目标帧率
