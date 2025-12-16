@@ -9,8 +9,8 @@ coordinate_system:
 
 # 走廊基本尺寸
 corridor:
-  width_m: 2.0   # 走廊宽度（米）
-  length_m: 6.0  # 监控范围长度（米）
+  width_m: 1.6  # 走廊宽度（米）
+  length_m: 12.0  # 监控范围长度（米）
 
 # 机柜定义（从您的 CABINETS 字典转换而来）
 cabinets:

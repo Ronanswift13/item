@@ -17,7 +17,11 @@ from core.geometry2d import (
     distance_point_to_segment,
     distance_to_polygon_edge,
     point_in_linear_buffer,
-    validate_polygon
+    validate_polygon,
+    line_segments_intersect,
+    polygon_area,
+    polygon_centroid,
+    expand_polygon
 )
 
 
@@ -136,32 +140,186 @@ class TestPolygonValidation:
 
 class TestRealWorldScenarios:
     """测试实际场景"""
-    
+
     def test_cabinet_zone_detection(self):
         """测试机柜区域检测（模拟实际配置）"""
         # 模拟1号机柜区域
         cabinet_1 = [(1.8, -0.4), (2.2, -0.4), (2.2, 0.4), (1.8, 0.4)]
-        
+
         # 机柜中心位置应该在区域内
         assert point_in_polygon((2.0, 0.0), cabinet_1) == True
-        
+
         # 机柜外侧应该不在区域内
         assert point_in_polygon((1.5, 0.0), cabinet_1) == False
         assert point_in_polygon((2.5, 0.0), cabinet_1) == False
-    
+
     def test_yellow_line_buffer(self):
         """测试黄线缓冲区（模拟实际配置）"""
         # 黄线位于4.0米处，纵向穿过走廊
         yellow_line = ((4.0, -1.0), (4.0, 1.0))
         buffer = 0.2
-        
+
         # 距离黄线0.1米应该触发ON_LINE警告
         assert point_in_linear_buffer((3.9, 0.0), yellow_line, buffer) == True
         assert point_in_linear_buffer((4.1, 0.0), yellow_line, buffer) == True
-        
+
         # 距离黄线0.3米应该不在缓冲区
         assert point_in_linear_buffer((3.7, 0.0), yellow_line, buffer) == False
         assert point_in_linear_buffer((4.3, 0.0), yellow_line, buffer) == False
+
+
+class TestLineSegmentIntersection:
+    """测试线段相交检测"""
+
+    def test_intersecting_segments(self):
+        """测试相交的线段"""
+        # X形相交
+        seg1 = ((0, 0), (2, 2))
+        seg2 = ((0, 2), (2, 0))
+        assert line_segments_intersect(seg1, seg2) == True
+
+    def test_non_intersecting_segments(self):
+        """测试不相交的线段"""
+        # 平行线段
+        seg1 = ((0, 0), (1, 0))
+        seg2 = ((0, 1), (1, 1))
+        assert line_segments_intersect(seg1, seg2) == False
+
+    def test_touching_endpoints(self):
+        """测试端点接触的线段"""
+        seg1 = ((0, 0), (1, 1))
+        seg2 = ((1, 1), (2, 0))
+        assert line_segments_intersect(seg1, seg2) == True
+
+    def test_t_intersection(self):
+        """测试T型相交"""
+        seg1 = ((0, 0), (2, 0))  # 水平线段
+        seg2 = ((1, -1), (1, 1))  # 垂直线段穿过中点
+        assert line_segments_intersect(seg1, seg2) == True
+
+    def test_collinear_segments(self):
+        """测试共线但不重叠的线段"""
+        seg1 = ((0, 0), (1, 0))
+        seg2 = ((2, 0), (3, 0))
+        assert line_segments_intersect(seg1, seg2) == False
+
+
+class TestPolygonArea:
+    """测试多边形面积计算"""
+
+    def test_square_area(self):
+        """测试正方形面积"""
+        square = [(0, 0), (0, 2), (2, 2), (2, 0)]
+        assert polygon_area(square) == pytest.approx(4.0)
+
+    def test_triangle_area(self):
+        """测试三角形面积"""
+        # 底3高2的三角形，面积=3
+        triangle = [(0, 0), (3, 0), (1.5, 2)]
+        assert polygon_area(triangle) == pytest.approx(3.0)
+
+    def test_rectangle_area(self):
+        """测试矩形面积"""
+        rectangle = [(0, 0), (0, 3), (4, 3), (4, 0)]
+        assert polygon_area(rectangle) == pytest.approx(12.0)
+
+    def test_irregular_polygon_area(self):
+        """测试不规则多边形面积"""
+        # L形多边形
+        l_shape = [(0, 0), (2, 0), (2, 1), (1, 1), (1, 2), (0, 2)]
+        # 面积 = 2*1 + 1*1 = 3
+        assert polygon_area(l_shape) == pytest.approx(3.0)
+
+    def test_degenerate_polygon_area(self):
+        """测试退化多边形（共线点）面积"""
+        degenerate = [(0, 0), (1, 0), (2, 0)]
+        assert polygon_area(degenerate) == pytest.approx(0.0, abs=1e-6)
+
+
+class TestPolygonCentroid:
+    """测试多边形重心计算"""
+
+    def test_square_centroid(self):
+        """测试正方形重心"""
+        square = [(0, 0), (0, 2), (2, 2), (2, 0)]
+        cx, cy = polygon_centroid(square)
+        assert cx == pytest.approx(1.0)
+        assert cy == pytest.approx(1.0)
+
+    def test_triangle_centroid(self):
+        """测试三角形重心"""
+        triangle = [(0, 0), (3, 0), (0, 3)]
+        cx, cy = polygon_centroid(triangle)
+        # 三角形重心是三个顶点的平均
+        assert cx == pytest.approx(1.0)
+        assert cy == pytest.approx(1.0)
+
+    def test_rectangle_centroid(self):
+        """测试矩形重心"""
+        rectangle = [(1, 1), (1, 4), (5, 4), (5, 1)]
+        cx, cy = polygon_centroid(rectangle)
+        assert cx == pytest.approx(3.0)
+        assert cy == pytest.approx(2.5)
+
+    def test_degenerate_polygon_centroid(self):
+        """测试退化多边形重心（退回到顶点平均）"""
+        degenerate = [(0, 0), (2, 0), (4, 0)]
+        cx, cy = polygon_centroid(degenerate)
+        assert cx == pytest.approx(2.0)
+        assert cy == pytest.approx(0.0)
+
+
+class TestExpandPolygon:
+    """测试多边形扩展/收缩"""
+
+    def test_expand_square(self):
+        """测试扩展正方形"""
+        square = [(0, 0), (0, 1), (1, 1), (1, 0)]
+        expanded = expand_polygon(square, 0.1)
+
+        # 扩展后的多边形应该有4个顶点
+        assert len(expanded) == 4
+
+        # 扩展后的面积应该大于原面积
+        original_area = polygon_area(square)
+        expanded_area = polygon_area(expanded)
+        assert expanded_area > original_area
+
+    def test_shrink_square(self):
+        """测试收缩正方形"""
+        square = [(0, 0), (0, 2), (2, 2), (2, 0)]
+        shrunk = expand_polygon(square, -0.1)
+
+        # 收缩后的多边形应该有4个顶点
+        assert len(shrunk) == 4
+
+        # 收缩后的面积应该小于原面积
+        original_area = polygon_area(square)
+        shrunk_area = polygon_area(shrunk)
+        assert shrunk_area < original_area
+
+    def test_expand_triangle(self):
+        """测试扩展三角形"""
+        triangle = [(0, 0), (2, 0), (1, 2)]
+        expanded = expand_polygon(triangle, 0.1)
+
+        # 扩展后的多边形应该有3个顶点
+        assert len(expanded) == 3
+
+        # 扩展后的面积应该大于原面积
+        original_area = polygon_area(triangle)
+        expanded_area = polygon_area(expanded)
+        assert expanded_area > original_area
+
+    def test_zero_expansion(self):
+        """测试零扩展（不改变）"""
+        square = [(0, 0), (0, 1), (1, 1), (1, 0)]
+        unchanged = expand_polygon(square, 0.0)
+
+        # 面积应该基本不变
+        original_area = polygon_area(square)
+        unchanged_area = polygon_area(unchanged)
+        assert unchanged_area == pytest.approx(original_area, rel=0.01)
 
 
 if __name__ == "__main__":

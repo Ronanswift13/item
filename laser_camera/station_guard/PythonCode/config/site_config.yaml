@@ -2,31 +2,89 @@
 coordinate_system:
   origin: [0.0, 0.0]
   unit: meters
+  description: "坐标系原点在走廊起始端，X轴沿走廊方向，Y轴沿走廊宽度方向"
 
 corridor:
-  width_m: 2.0  # 实测走廊宽度
-  length_m: 6.0
+  width_m: 2.0  # 实测走廊宽度 (Y方向：-1.0 到 1.0)
+  length_m: 6.5  # 走廊总长度 (X方向：0 到 6.5)
+  y_range: [-1.0, 1.0]  # 走廊在Y方向的范围
 
-# TODO: 根据实际机柜位置测量并填写
+# 机柜配置 - 基于实际测量数据
+# 每个机柜定义其前方的操作区域（多边形）
 cabinets:
   - id: 1
-    center_distance_m: 2.0
-    front_zone:
-      - [1.8, -0.4]
-      - [2.2, -0.4]
-      - [2.2, 0.4]
-      - [1.8, 0.4]
-    authorized_persons: []  # 先留空，后续填入实际人员ID
+    x_range: [1.05, 1.95]  # X方向范围
+    center_distance_m: 1.50
+    front_zone:  # 机柜前方操作区域（顺时针定义）
+      - [1.05, -0.5]
+      - [1.95, -0.5]
+      - [1.95, 0.5]
+      - [1.05, 0.5]
+    authorized_persons: []  # 授权人员ID列表，空表示所有人都可访问
 
+  - id: 2
+    x_range: [1.95, 2.85]
+    center_distance_m: 2.40
+    front_zone:
+      - [1.95, -0.5]
+      - [2.85, -0.5]
+      - [2.85, 0.5]
+      - [1.95, 0.5]
+    authorized_persons: []
+
+  - id: 3
+    x_range: [3.405, 4.305]
+    center_distance_m: 3.855
+    front_zone:
+      - [3.405, -0.5]
+      - [4.305, -0.5]
+      - [4.305, 0.5]
+      - [3.405, 0.5]
+    authorized_persons: []
+
+  - id: 4
+    x_range: [4.305, 5.205]
+    center_distance_m: 4.755
+    front_zone:
+      - [4.305, -0.5]
+      - [5.205, -0.5]
+      - [5.205, 0.5]
+      - [4.305, 0.5]
+    authorized_persons: []
+
+  - id: 5
+    x_range: [5.205, 6.105]
+    center_distance_m: 5.655
+    front_zone:
+      - [5.205, -0.5]
+      - [6.105, -0.5]
+      - [6.105, 0.5]
+      - [5.205, 0.5]
+    authorized_persons: []
+
+# 警戒线配置
 warning_lines:
   - id: "yellow_line_1"
-    segment: [[4.0, -1.0], [4.0, 1.0]]
-    buffer_width_m: 0.2
+    description: "3号机柜前的警戒线"
+    segment: [[3.2, -1.0], [3.2, 1.0]]  # 3号机柜前方警戒线
+    buffer_width_m: 0.2  # 缓冲区宽度（两侧各0.2米）
 
+# 危险区域配置（可选）
+danger_zones:
+  - id: "high_voltage_area"
+    description: "高压区域"
+    polygon:  # 示例：5号机柜后方高压区
+      - [6.0, -0.8]
+      - [6.5, -0.8]
+      - [6.5, 0.8]
+      - [6.0, 0.8]
+
+# 传感器配置
 sensors:
   camera:
-    image_width_px: 1920  # 从您的相机配置获取
+    image_width_px: 1920
     corridor_width_m: 2.0
-    
+
   lidar:
     mount_height_m: 1.5
+    max_range_m: 10.0

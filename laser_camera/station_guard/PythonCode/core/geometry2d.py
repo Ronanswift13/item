@@ -206,29 +206,36 @@ def polygon_area(polygon: Polygon) -> float:
 def polygon_centroid(polygon: Polygon) -> Point:
     """
     Calculate centroid (geometric center) of a polygon.
-    
+
     Useful for displaying zone labels or computing representative points.
     """
     if len(polygon) < 3:
         return (0.0, 0.0)
-    
-    area = polygon_area(polygon)
-    if area == 0:
+
+    # Calculate signed area for centroid formula
+    signed_area = 0.0
+    for i in range(len(polygon)):
+        j = (i + 1) % len(polygon)
+        signed_area += polygon[i][0] * polygon[j][1]
+        signed_area -= polygon[j][0] * polygon[i][1]
+    signed_area = signed_area / 2.0
+
+    if abs(signed_area) < 1e-10:
         # Degenerate polygon, return average of vertices
         x_sum = sum(p[0] for p in polygon)
         y_sum = sum(p[1] for p in polygon)
         return (x_sum / len(polygon), y_sum / len(polygon))
-    
+
     cx = 0.0
     cy = 0.0
-    
+
     for i in range(len(polygon)):
         j = (i + 1) % len(polygon)
         factor = polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1]
         cx += (polygon[i][0] + polygon[j][0]) * factor
         cy += (polygon[i][1] + polygon[j][1]) * factor
-    
-    area_factor = 6.0 * area
+
+    area_factor = 6.0 * signed_area
     return (cx / area_factor, cy / area_factor)
 
 
