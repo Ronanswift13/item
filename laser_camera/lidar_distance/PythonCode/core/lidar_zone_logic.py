@@ -193,6 +193,8 @@ def _demo_cli() -> None:
         CabinetZone(1, 1.00, 1.30),
         CabinetZone(2, 1.40, 1.70),
         CabinetZone(3, 1.80, 2.10),
+        
+        
     ]
     tracker = LidarZoneTracker(
         zones,
